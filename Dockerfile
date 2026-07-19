@@ -34,6 +34,9 @@ RUN ARCH=$(dpkg --print-architecture) \
 # ── just ─────────────────────────────────────────────────────────
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
+# ── Pi Coding Agent (global npm install needs root) ──────────────
+RUN npm install -g @mariozechner/pi-coding-agent
+
 # ── Non-root user with passwordless sudo ─────────────────────────
 RUN useradd -m -s /bin/bash -u 1000 coder \
     && echo "coder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder
@@ -47,9 +50,6 @@ ENV PATH="/home/coder/.local/bin:${PATH}"
 
 # ── Claude Code CLI ──────────────────────────────────────────────
 RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# ── Pi Coding Agent ─────────────────────────────────────────────
-RUN npm install -g @mariozechner/pi-coding-agent
 
 # ── Config files ─────────────────────────────────────────────────
 RUN mkdir -p /home/coder/.claude
