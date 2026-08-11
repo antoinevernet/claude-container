@@ -394,7 +394,9 @@ Start Prime Agent with:
 just prime my-project
 ```
 
-On first launch, run `/login` inside Prime Agent to choose a subscription or API-key provider. If you prefer environment variables, add the relevant keys to `.env` before creating the container, then recreate the container so the variables are forwarded.
+On first launch, Prime Agent may show Prime Intellect onboarding. Press `Esc` to choose another provider or model, or run `/login` inside Prime Agent to choose a subscription or API-key provider. If you prefer environment variables, add the relevant keys to `.env` before creating the container, then recreate the container so the variables are forwarded.
+
+For browser OAuth flows inside Docker, the final redirect may go to a `localhost` URL that does not load in your host browser. If that happens, copy the full redirect URL from your browser address bar and paste it back into Prime Agent when prompted.
 
 Run a one-shot prompt with:
 

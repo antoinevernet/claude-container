@@ -146,6 +146,6 @@ ccr --recipes          # show all available recipes
 - `/workspace` inside the container is bind-mounted to `projects/<name>/` on the host
 - **Subscription auth:** `just login <name>` runs `claude login` inside the container (once per container)
 - **API key auth** (optional): set keys in `.env`; they're forwarded to containers only when present
-- **Prime Agent auth:** run `just prime <name>` and use `/login`, or forward API keys from `.env` when creating the container.
+- **Prime Agent auth:** run `just prime <name>` and use `/login`, or forward API keys from `.env` when creating the container. Press `Esc` on first-run onboarding to choose another provider or model. For browser OAuth flows inside Docker, copy any failed final `localhost` redirect URL back into Prime Agent when prompted.
 - **agent-sync** (optional): runs on the host, writes skills/extensions into the project dir; the container sees them via bind mount
 - `just destroy` removes the container but project files stay in `projects/`
