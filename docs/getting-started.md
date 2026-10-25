@@ -9,6 +9,7 @@
 - [Your First Project](#your-first-project)
 - [Working With Claude Inside the Container](#working-with-claude-inside-the-container)
 - [Working With Pi Inside the Container](#working-with-pi-inside-the-container)
+- [Flavors: Different Tools for Different Projects](#flavors-different-tools-for-different-projects)
 - [Per-Project Agent Config (Optional)](#per-project-agent-config-optional)
 - [Managing Your Containers](#managing-your-containers)
 - [Moving Files In and Out](#moving-files-in-and-out)
@@ -221,7 +222,7 @@ This step typically takes 3-5 minutes the first time on a fast internet connecti
 just build
 ```
 
-**What this does:** Docker reads the `Dockerfile` (the blueprint) and builds an image — a snapshot of a Linux system with all the tools pre-installed. This includes:
+**What this does:** Docker reads `docker/base/Dockerfile` (the blueprint) and builds the **base image** — a snapshot of a Linux system with all the common tools pre-installed. This includes:
 
 - Python 3 and uv (a fast Python package manager)
 - Node.js 22 (for JavaScript)
@@ -232,6 +233,8 @@ just build
 - Pi Coding Agent
 
 The first build downloads a lot and takes several minutes. Future builds are much faster because Docker caches each step.
+
+There are also optional **flavor** images that add project-type-specific tools (research, game dev, video) on top of this base image — see [Flavors: Different Tools for Different Projects](#flavors-different-tools-for-different-projects). You don't need them for a basic setup; `just build` + `just create <name>` (no flavor) works exactly as described below.
 
 ---
 
@@ -372,6 +375,50 @@ Or start an interactive session (no prompt) and type your request:
 ```bash
 just pi my-project
 ```
+
+---
+
+## Flavors: Different Tools for Different Projects
+
+The base image (`docker/base/Dockerfile`) has the common toolset: Python, Node, R, DuckDB, Claude Code, Pi. A **flavor** is a second Dockerfile that starts `FROM` the base image and layers on extra tools for a specific kind of project, so you don't have to install the same research/game-dev/video software by hand in every container you create.
+
+| Flavor | Adds | Good for |
+|--------|------|----------|
+| `base` (default) | nothing extra | general-purpose work, what you get with plain `just create <name>` |
+| `research` | OpenAI Codex CLI, corpex (private tool) | data analysis / academic research projects |
+| `gamedev` | Godot, Blender (command-line/scripting only) | game projects |
+| `video` | Blender, ffmpeg | video/render pipelines |
+
+### Building a flavor
+
+```bash
+# Build one flavor (builds the base image first automatically)
+just build-flavor research
+
+# Or build the base image plus every flavor at once
+just build-all
+```
+
+The `research` flavor clones a private git repo at build time, so it needs your SSH key forwarded into the build — make sure it's loaded first:
+
+```bash
+ssh-add -l          # confirm a key is loaded; if not, run: ssh-add ~/.ssh/id_ed25519
+just build-flavor research
+```
+
+### Creating a container with a flavor
+
+```bash
+just create my-paper research
+just create my-game gamedev
+just create my-edit video
+```
+
+The flavor name is the second argument; omit it (or pass `base`) to get the plain base image, same as before.
+
+### What you don't get
+
+`gamedev` and `video` install Godot and Blender as command-line/scriptable binaries only (e.g. `godot --headless --export-release`, `blender -b file.blend -f 1`) — there's no display forwarded into the container, so you can't open their GUIs from inside it. **DaVinci Resolve is not included at all**: it's a GUI-only, GPU-accelerated app with a login-gated download and no scriptable installer, so it genuinely can't be containerized this way. Run Resolve on your Mac as usual, and use the `video` container for scripted ffmpeg/Blender work that feeds into it.
 
 ---
 
@@ -727,10 +774,13 @@ Run any of these from the `claude-container` directory:
 | Command | What It Does |
 |---------|-------------|
 | `just setup` | One-time setup: installs Colima and Docker, starts the VM |
-| `just build` | Builds the container image from the Dockerfile |
-| `just rebuild` | Rebuilds from scratch (ignoring cache). Use if the image seems broken |
-| `just create <name>` | Creates a new container and its project folder |
-| `just create <name> -- <args>` | Creates a container with extra Docker options (ports, mounts, etc.) |
+| `just build` / `just build-base` | Builds the base container image |
+| `just build-flavor <flavor>` | Builds a flavor image (research, gamedev, video), building base first |
+| `just build-all` | Builds the base image plus every flavor |
+| `just rebuild` | Rebuilds the base image from scratch (ignoring cache). Use if the image seems broken |
+| `just create <name>` | Creates a new container (base flavor) and its project folder |
+| `just create <name> <flavor>` | Creates a container using a specific flavor (research, gamedev, video) |
+| `just create <name> <flavor> -- <args>` | Creates a flavored container with extra Docker options (ports, mounts, etc.) |
 | `just login <name>` | Log in with Claude subscription (once per container) |
 | `just start <name>` | Starts a stopped container |
 | `just stop <name>` | Stops a running container (preserves state) |
@@ -858,10 +908,11 @@ The project includes two configuration files that control how Claude behaves ins
 
 - **`config/pi-settings.json`** — Controls Pi's default provider and model. The default is Anthropic with Claude Sonnet.
 
-After editing any config file, rebuild the image:
+After editing any config file, rebuild the image(s):
 
 ```bash
-just rebuild
+just rebuild           # base image only
+just build-flavor research   # if you also use flavor images, rebuild those too
 ```
 
 Existing containers are **not** affected — only new containers created after the rebuild will pick up the changes.
@@ -880,6 +931,7 @@ Existing containers are **not** affected — only new containers created after t
 | **Docker** | The software that creates and manages containers |
 | **Dockerfile** | A blueprint that describes how to build a container image |
 | **Image** | A snapshot/template used to create containers (like a class vs an instance) |
+| **Flavor** | An image that extends the base image with extra tools for a project type (research, gamedev, video) |
 | **Justfile** | A file containing shortcut recipes for terminal commands |
 | **Repository (repo)** | A project folder tracked by git, often hosted on GitHub |
 | **`sudo`** | "Superuser do" — runs a command as the administrator. Inside the container, this works without a password |

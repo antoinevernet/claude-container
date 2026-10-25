@@ -17,10 +17,10 @@ Project files are bind-mounted so they persist on the host. Containers are long-
 # 1. Install Colima + Docker
 just setup
 
-# 2. Build the image
+# 2. Build the base image
 just build
 
-# 3. Create a project
+# 3. Create a project (defaults to the base flavor)
 just create my-project
 
 # 4. Log in (subscription users)
@@ -37,7 +37,39 @@ just pi my-project
 
 ## Tools Inside the Container
 
-git, python3, uv, Node.js 22, R, DuckDB, just, build-essential, Claude Code CLI, Pi Coding Agent.
+Base image: git, python3, uv, Node.js 22, R, DuckDB, just, build-essential, Claude Code CLI, Pi Coding Agent.
+
+## Flavors
+
+`docker/base/Dockerfile` has the common toolset above. Project-type flavors `FROM` the base image and layer on extra tools, so they don't duplicate the common install steps and stay cheap to add:
+
+| Flavor | Adds | Dockerfile |
+|--------|------|------------|
+| `base` (default) | nothing extra | `docker/base/Dockerfile` |
+| `research` | OpenAI Codex CLI, corpex (private) | `docker/research/Dockerfile` |
+| `gamedev` | Godot, Blender (CLI/scripting) | `docker/gamedev/Dockerfile` |
+| `video` | Blender, ffmpeg | `docker/video/Dockerfile` |
+
+```bash
+# Build base + every flavor
+just build-all
+
+# Or build one flavor at a time (builds base first if needed)
+just build-flavor research
+
+# Create a container using a flavor
+just create my-paper research
+just create my-game gamedev
+just create my-edit video
+```
+
+`just create <name>` with no flavor still creates a `base` container, so existing workflows keep working.
+
+**research** needs SSH agent forwarding at build time, since corpex is cloned from a private repo — `build-flavor`/`build-all` already pass `--ssh default`, so just make sure your key is loaded (`ssh-add -l`) before building, and fill in the real repo URL in `docker/research/Dockerfile` (it ships with a `<your-org>/corpex` placeholder).
+
+**gamedev/video** install Godot and Blender as CLI/scriptable binaries only (`godot --headless --export-release`, `blender -b file.blend -f 1`). Neither has a GUI available — that needs a display (X11/VNC) forwarded into the container, which this setup doesn't provide.
+
+**DaVinci Resolve is intentionally not included anywhere.** It's a GUI-only, GPU-accelerated app distributed from a login-gated download with no scriptable or headless installer — it can't be meaningfully containerized this way. Keep Resolve on the host; use the `video` flavor for ffmpeg/Blender scripting and hand finished renders to Resolve on the host.
 
 ## Claude Code vs Pi
 
@@ -56,9 +88,11 @@ Both are available in every container. Use whichever fits your workflow:
 | Recipe | Purpose |
 |--------|---------|
 | `just setup` | Install Colima + Docker CLI, start VM |
-| `just build` | Build the container image |
-| `just rebuild` | Build without cache |
-| `just create <name> [-- DOCKER_ARGS]` | Create container with bind-mounted project dir |
+| `just build` / `just build-base` | Build the base image |
+| `just build-flavor <flavor>` | Build one flavor image (builds base first) |
+| `just build-all` | Build base + every flavor |
+| `just rebuild` | Build the base image without cache |
+| `just create <name> [flavor] [-- DOCKER_ARGS]` | Create container with bind-mounted project dir (flavor defaults to `base`) |
 | `just start/stop/restart <name>` | Container lifecycle |
 | `just login <name>` | Log in with Claude subscription (once per container) |
 | `just shell <name>` | Open a bash shell (auto-starts) |
