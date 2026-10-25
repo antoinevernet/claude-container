@@ -420,6 +420,22 @@ The flavor name is the second argument; omit it (or pass `base`) to get the plai
 
 `gamedev` and `video` install Godot and Blender as command-line/scriptable binaries only (e.g. `godot --headless --export-release`, `blender -b file.blend -f 1`) — there's no display forwarded into the container, so you can't open their GUIs from inside it. **DaVinci Resolve is not included at all**: it's a GUI-only, GPU-accelerated app with a login-gated download and no scriptable installer, so it genuinely can't be containerized this way. Run Resolve on your Mac as usual, and use the `video` container for scripted ffmpeg/Blender work that feeds into it.
 
+### Keeping flavor tools up to date
+
+Version-pinned tools (DuckDB, Godot, Blender) only change when someone bumps their version number in the Dockerfile and rebuilds — they won't silently drift. But things like Claude Code CLI, Pi, Codex CLI, and corpex are installed as "whatever is latest right now," and Docker's build cache means a plain `just build-flavor research` **won't** actually re-fetch latest once it's built once — it just reuses what was fetched the first time.
+
+To force a real refresh:
+
+```bash
+just rebuild-base              # refresh base's floating tools (just, uv, Pi, Claude Code CLI)
+just rebuild-flavor research   # refresh base + research's floating tools (Codex CLI, corpex)
+just rebuild-all               # refresh everything
+```
+
+These are fast — they skip re-running the slow apt/Node/DuckDB install steps, so they're reasonable to run often (e.g. before starting a new project, or weekly). `just rebuild` still exists as the "nuclear option" that redoes absolutely everything from scratch, for when something seems actually broken rather than just stale.
+
+Rebuilding an image never touches containers you've already created — those keep running on whatever was installed when you created them. You only get the updated tools in **new** containers (`just create <name> <flavor>` after the rebuild), or by `destroy`-ing and re-`create`-ing an existing one.
+
 ---
 
 ## Per-Project Agent Config (Optional)
@@ -778,6 +794,9 @@ Run any of these from the `claude-container` directory:
 | `just build-flavor <flavor>` | Builds a flavor image (research, gamedev, video), building base first |
 | `just build-all` | Builds the base image plus every flavor |
 | `just rebuild` | Rebuilds the base image from scratch (ignoring cache). Use if the image seems broken |
+| `just rebuild-base` | Refreshes the base image's floating tools (just, uv, Pi, Claude Code CLI) |
+| `just rebuild-flavor <flavor>` | Refreshes a flavor's floating tools too (rebuilds base first) |
+| `just rebuild-all` | Refreshes base + every flavor |
 | `just create <name>` | Creates a new container (base flavor) and its project folder |
 | `just create <name> <flavor>` | Creates a container using a specific flavor (research, gamedev, video) |
 | `just create <name> <flavor> -- <args>` | Creates a flavored container with extra Docker options (ports, mounts, etc.) |
@@ -911,8 +930,8 @@ The project includes two configuration files that control how Claude behaves ins
 After editing any config file, rebuild the image(s):
 
 ```bash
-just rebuild           # base image only
-just build-flavor research   # if you also use flavor images, rebuild those too
+just rebuild-base              # base image only
+just rebuild-flavor research   # if you also use flavor images, rebuild those too
 ```
 
 Existing containers are **not** affected — only new containers created after the rebuild will pick up the changes.

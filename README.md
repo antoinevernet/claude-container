@@ -65,11 +65,33 @@ just create my-edit video
 
 `just create <name>` with no flavor still creates a `base` container, so existing workflows keep working.
 
-**research** needs SSH agent forwarding at build time, since corpex is cloned from a private repo — `build-flavor`/`build-all` already pass `--ssh default`, so just make sure your key is loaded (`ssh-add -l`) before building, and fill in the real repo URL in `docker/research/Dockerfile` (it ships with a `<your-org>/corpex` placeholder).
+**research** needs SSH agent forwarding at build time, since corpex is cloned from a private repo (`antoinevernet/explorer`) — `build-flavor`/`build-all` already pass `--ssh default`, so just make sure your key is loaded (`ssh-add -l`) before building.
 
 **gamedev/video** install Godot and Blender as CLI/scriptable binaries only (`godot --headless --export-release`, `blender -b file.blend -f 1`). Neither has a GUI available — that needs a display (X11/VNC) forwarded into the container, which this setup doesn't provide.
 
 **DaVinci Resolve is intentionally not included anywhere.** It's a GUI-only, GPU-accelerated app distributed from a login-gated download with no scriptable or headless installer — it can't be meaningfully containerized this way. Keep Resolve on the host; use the `video` flavor for ffmpeg/Blender scripting and hand finished renders to Resolve on the host.
+
+## Keeping Images Up to Date
+
+Pinned tools (DuckDB, Godot, Blender) only change when you bump their `ARG ..._VERSION` in the relevant Dockerfile and rebuild. Everything else that installs "latest" with no pin — `just`, `uv`, Pi, Claude Code CLI in the base image; Codex CLI and corpex in `research` — gets silently frozen by Docker's layer cache the first time it's built, and a plain `just build`/`just build-flavor` won't refresh it.
+
+```bash
+# Refresh the base image's floating tools + re-pull debian:bookworm-slim
+just rebuild-base
+
+# Refresh a flavor's floating tools too (rebuilds base first)
+just rebuild-flavor research
+
+# Refresh base + every flavor
+just rebuild-all
+
+# Nuclear option: redo everything, including apt/Node/DuckDB layers
+just rebuild
+```
+
+`rebuild-base`/`rebuild-flavor`/`rebuild-all` are the ones to reach for day to day — they force a fresh fetch of just the floating tools (via a changing `CACHEBUST` build arg) without re-running the slow apt/Node/DuckDB layers, so they're fast enough to run often. `rebuild-flavor` only needs to rebuild base + pass no extra flags for the flavor itself — rebuilding base gives it a new image digest, which invalidates Docker's cache for every later layer in the flavor build automatically, so Codex CLI/corpex refetch too.
+
+Rebuilding doesn't touch containers you already created — `just login`/auth and anything installed inside a running container survive until you `destroy` + `create` it again on the new image. A reasonable cadence: run `just rebuild-flavor <flavor>` before starting a new piece of work, or weekly if you're using a container daily.
 
 ## Claude Code vs Pi
 
@@ -91,7 +113,10 @@ Both are available in every container. Use whichever fits your workflow:
 | `just build` / `just build-base` | Build the base image |
 | `just build-flavor <flavor>` | Build one flavor image (builds base first) |
 | `just build-all` | Build base + every flavor |
-| `just rebuild` | Build the base image without cache |
+| `just rebuild` | Build the base image without cache (nuclear option) |
+| `just rebuild-base` | Refresh the base image's floating tools (just, uv, Pi, Claude Code CLI) |
+| `just rebuild-flavor <flavor>` | Refresh a flavor's floating tools too (rebuilds base first) |
+| `just rebuild-all` | Refresh base + every flavor |
 | `just create <name> [flavor] [-- DOCKER_ARGS]` | Create container with bind-mounted project dir (flavor defaults to `base`) |
 | `just start/stop/restart <name>` | Container lifecycle |
 | `just login <name>` | Log in with Claude subscription (once per container) |

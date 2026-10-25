@@ -48,9 +48,32 @@ build-all: build-base
 # Alias kept for backward compatibility — just builds the base image
 build: build-base
 
-# Rebuild the base image without cache
+# Rebuild the base image without cache (nuclear option — also redoes
+# apt/Node/DuckDB). For routine updates, prefer `rebuild-base`.
 rebuild:
     docker build --no-cache -t {{image}}-base -f docker/base/Dockerfile .
+
+# Refresh the base image's floating tools (just, uv, Pi, Claude Code CLI)
+# and re-pull the upstream debian:bookworm-slim image, without redoing
+# the slower apt/Node/DuckDB layers.
+rebuild-base:
+    docker build --pull --build-arg CACHEBUST=$(date +%s) -t {{image}}-base -f docker/base/Dockerfile .
+
+# Refresh a flavor image (e.g. research's Codex CLI + corpex) by rebuilding
+# base first. No extra args needed here: the refreshed base image gets a
+# new digest, which invalidates Docker's cache for every layer in the
+# flavor build that comes after FROM, so its own floating installs
+# (and any pinned ones, harmlessly) re-run too.
+rebuild-flavor flavor: rebuild-base
+    docker build --ssh default -t {{image}}-{{flavor}} -f docker/{{flavor}}/Dockerfile .
+
+# Refresh base + every flavor
+rebuild-all: rebuild-base
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in {{flavors}}; do
+        docker build --ssh default -t {{image}}-$f -f docker/$f/Dockerfile .
+    done
 
 # ── Container lifecycle ───────────────────────────────────────────
 
