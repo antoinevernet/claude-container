@@ -23,23 +23,71 @@ colima-status:
     colima status
 
 # ── Image ─────────────────────────────────────────────────────────
+# "base" has git/python/node/R/duckdb/claude/pi — the common toolset.
+# Flavors (research, gamedev, video) FROM base and layer on project-type
+# specific tools. See docker/<flavor>/Dockerfile.
 
-# Build the container image
-build:
-    docker build -t {{image}} .
+flavors := "research gamedev video"
 
-# Rebuild without cache
+# Build the base image
+build-base:
+    docker build -t {{image}}-base -f docker/base/Dockerfile .
+
+# Build one flavor image (research, gamedev, video) — builds base first
+build-flavor flavor: build-base
+    docker build --ssh default -t {{image}}-{{flavor}} -f docker/{{flavor}}/Dockerfile .
+
+# Build base + every flavor
+build-all: build-base
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in {{flavors}}; do
+        docker build --ssh default -t {{image}}-$f -f docker/$f/Dockerfile .
+    done
+
+# Alias kept for backward compatibility — just builds the base image
+build: build-base
+
+# Rebuild the base image without cache (nuclear option — also redoes
+# apt/Node/DuckDB). For routine updates, prefer `rebuild-base`.
 rebuild:
-    docker build --no-cache -t {{image}} .
+    docker build --no-cache -t {{image}}-base -f docker/base/Dockerfile .
+
+# Refresh the base image's floating tools (just, uv, Pi, Claude Code CLI)
+# and re-pull the upstream debian:bookworm-slim image, without redoing
+# the slower apt/Node/DuckDB layers.
+rebuild-base:
+    docker build --pull --build-arg CACHEBUST=$(date +%s) -t {{image}}-base -f docker/base/Dockerfile .
+
+# Refresh a flavor image (e.g. research's Codex CLI + corpex) by rebuilding
+# base first. No extra args needed here: the refreshed base image gets a
+# new digest, which invalidates Docker's cache for every layer in the
+# flavor build that comes after FROM, so its own floating installs
+# (and any pinned ones, harmlessly) re-run too.
+rebuild-flavor flavor: rebuild-base
+    docker build --ssh default -t {{image}}-{{flavor}} -f docker/{{flavor}}/Dockerfile .
+
+# Refresh base + every flavor
+rebuild-all: rebuild-base
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in {{flavors}}; do
+        docker build --ssh default -t {{image}}-$f -f docker/$f/Dockerfile .
+    done
 
 # ── Container lifecycle ───────────────────────────────────────────
 
-# Create a new container with bind-mounted project dir
-create name *DOCKER_ARGS:
+# Create a new container with bind-mounted project dir.
+# flavor selects the image: base (default), research, gamedev, video.
+create name flavor="base" *DOCKER_ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     if docker inspect {{prefix}}{{name}} &>/dev/null; then
         echo "Container {{prefix}}{{name}} already exists. Use 'just destroy {{name}}' first."
+        exit 1
+    fi
+    if ! docker image inspect {{image}}-{{flavor}} &>/dev/null; then
+        echo "Image {{image}}-{{flavor}} not found. Run 'just build-flavor {{flavor}}' (or 'just build-base' for the base flavor) first."
         exit 1
     fi
     mkdir -p "$(pwd)/projects/{{name}}"
@@ -51,9 +99,9 @@ create name *DOCKER_ARGS:
         ${OPENAI_API_KEY:+-e OPENAI_API_KEY} \
         -v "$(pwd)/projects/{{name}}:/workspace" \
         {{DOCKER_ARGS}} \
-        {{image}} \
+        {{image}}-{{flavor}} \
         sleep infinity
-    echo "Container {{prefix}}{{name}} created. Project dir: projects/{{name}}/"
+    echo "Container {{prefix}}{{name}} created (flavor: {{flavor}}). Project dir: projects/{{name}}/"
 
 # Start a stopped container
 start name:

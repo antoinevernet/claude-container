@@ -31,13 +31,22 @@ RUN ARCH=$(dpkg --print-architecture) \
     && apt-get purge -y unzip && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Cache-bust point ───────────────────────────────────────────────
+# Everything below installs "latest" with no version pin (just, Pi, uv,
+# Claude Code CLI). A plain rebuild reuses Docker's cached layers and
+# keeps whatever was fetched the first time, so a changing CACHEBUST
+# value (passed via `just rebuild-base` / `rebuild-flavor`) is what
+# actually forces these to re-fetch, without re-running the slower
+# apt/Node/DuckDB layers above.
+ARG CACHEBUST=1
+RUN echo "cachebust=${CACHEBUST}" > /dev/null
+
 # ── just ─────────────────────────────────────────────────────────
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
-
 # ── Pi Coding Agent ─────────────────────────────────────────────
-RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest
-
+  RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent@latest
+  
 # ── Non-root user with passwordless sudo ─────────────────────────
 RUN useradd -m -s /bin/bash -u 1000 coder \
     && echo "coder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coder
