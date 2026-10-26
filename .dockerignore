@@ -1,0 +1,11 @@
+# Keep the build context small — the Dockerfiles only COPY from config/ and docker/.
+# Without this, projects/ (mounted workspaces, often tens of GB) gets sent to the daemon.
+projects/
+workspace/
+workspace-copy/
+.git/
+.env
+.claude/
+.DS_Store
+*.tar.gz
+build.log

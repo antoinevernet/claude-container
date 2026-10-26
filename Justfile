@@ -29,16 +29,34 @@ colima-status:
 
 flavors := "research gamedev video"
 
+# Read-only deploy key for the private explorer repo (corpex), cloned over
+# SSH during the research build. Its passphrase lives in the macOS Keychain.
+deploy_key := env_var('HOME') + "/.ssh/explorer_deploy"
+
+# Load the deploy key into ssh-agent for 15 minutes if the flavor needs it
+[private]
+_ssh-for flavor:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ "{{flavor}}" = "research" ] || exit 0
+    if [ ! -f "{{deploy_key}}" ]; then
+        echo "Missing {{deploy_key}} — the research build needs it to clone explorer. Create it with:" >&2
+        echo "  ssh-keygen -t ed25519 -f {{deploy_key}}" >&2
+        echo "  gh repo deploy-key add {{deploy_key}}.pub -R antoinevernet/explorer --title claude-container-build" >&2
+        exit 1
+    fi
+    ssh-add -t 15m --apple-use-keychain "{{deploy_key}}"
+
 # Build the base image
 build-base:
     docker build -t {{image}}-base -f docker/base/Dockerfile .
 
 # Build one flavor image (research, gamedev, video) — builds base first
-build-flavor flavor: build-base
+build-flavor flavor: build-base (_ssh-for flavor)
     docker build --ssh default -t {{image}}-{{flavor}} -f docker/{{flavor}}/Dockerfile .
 
 # Build base + every flavor
-build-all: build-base
+build-all: build-base (_ssh-for "research")
     #!/usr/bin/env bash
     set -euo pipefail
     for f in {{flavors}}; do
@@ -64,11 +82,11 @@ rebuild-base:
 # new digest, which invalidates Docker's cache for every layer in the
 # flavor build that comes after FROM, so its own floating installs
 # (and any pinned ones, harmlessly) re-run too.
-rebuild-flavor flavor: rebuild-base
+rebuild-flavor flavor: rebuild-base (_ssh-for flavor)
     docker build --ssh default -t {{image}}-{{flavor}} -f docker/{{flavor}}/Dockerfile .
 
 # Refresh base + every flavor
-rebuild-all: rebuild-base
+rebuild-all: rebuild-base (_ssh-for "research")
     #!/usr/bin/env bash
     set -euo pipefail
     for f in {{flavors}}; do

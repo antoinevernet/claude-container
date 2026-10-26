@@ -1,8 +1,16 @@
 ARG BASE_IMAGE=claude-container-base
 FROM ${BASE_IMAGE}
 
+USER root
+
+# ── ssh client (needed to clone corpex over git+ssh below) ────────
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
 # ── OpenAI Codex CLI ──────────────────────────────────────────────
 RUN npm install -g @openai/codex
+
+USER coder
 
 # ── corpex ────────────────────────────────────────────────────────
 # Private repo — cloned over SSH, so the build needs agent forwarding:
